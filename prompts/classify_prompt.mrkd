@@ -9,6 +9,7 @@ ROLE RULES:
 - Classify by BEHAVIOR across the WHOLE conversation — ignore speaker IDs (Vorbitor 1/2/3)
 - The agent is whoever is selling/explaining; the client is whoever is deciding/reacting
 - "Primul vorbitor" is NOT always the agent — determine role from content, not order
+- If 3+ speakers: only ONE speaker is AGENT (the one selling); all others are CLIENT regardless of when they speak
 
 CONFIDENCE:
 - 0.95+   clear role, unambiguous
