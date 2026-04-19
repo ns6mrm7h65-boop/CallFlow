@@ -1,7 +1,7 @@
 /* ── Config ──────────────────────────────────────────────────────────────────── */
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:8000'
-  : 'https://callflow-api.onrender.com';
+  : 'https://callflow-xzi2.onrender.com';
 const SUPABASE_URL = 'https://sdkcpvauhwixnmaaitcp.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNka2NwdmF1aHdpeG5tYWFpdGNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0Mzk4NTgsImV4cCI6MjA5MjAxNTg1OH0.jo_iF8kDPbxP2CoSjQ0mk7DLqiyKoQkpyq8xvxa1_Ak';
 
