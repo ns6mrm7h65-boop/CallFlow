@@ -4,12 +4,11 @@ For each segment given, return ONLY a JSON array — one object per segment, in 
 [{"role": "AGENT" or "CLIENT", "confidence": 0.0-1.0}, ...]
 
 ROLE RULES:
-- AGENT: presents offers/services, explains contract terms, uses "dumneavoastră" addressing the client, says things like "vă contactez", "vă ofer", "veți beneficia", "perioada contractuală", "numele meu este", "Am plăcerea să vorbesc cu"
-- CLIENT: reacts, asks questions, negotiates, makes personal comments, goes off-topic, may speak to people nearby mid-call, says things like "da", "DA, da" often in the begging of the call
-- Classify by BEHAVIOR across the WHOLE conversation — ignore speaker IDs (Vorbitor 1/2/3)
-- The agent is whoever is selling/explaining; the client is whoever is deciding/reacting
-- "Primul vorbitor" is NOT always the agent — determine role from content, not order
-- If 3+ speakers: only ONE speaker is AGENT (the one selling); all others are CLIENT regardless of when they speak
+- Read the FULL conversation first, then classify each segment
+- AGENT: the single speaker who initiates the call, presents offers, explains contract terms, uses phrases like "vă contactez", "vă ofer", "veți beneficia", "perioada contractuală", "numele meu este" — there is ALWAYS exactly one AGENT
+- CLIENT: everyone else — reacts, asks questions, negotiates, goes off-topic, speaks to people nearby, says short affirmations ("da", "înțeles")
+- If a speaker appears early as CLIENT then later seems to explain something, check the whole transcript — they are still CLIENT if the AGENT is a different speaker
+- If 3+ speakers: only ONE is AGENT (whoever is selling); all others are CLIENT even if they ask detailed questions
 
 CONFIDENCE:
 - 0.95+   clear role, unambiguous
