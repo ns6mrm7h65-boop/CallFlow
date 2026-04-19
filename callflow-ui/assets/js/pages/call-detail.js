@@ -25,6 +25,15 @@ async function pageCallDetail({ id }) {
 
     <div class="meta-strip" id="detailMeta" style="margin-bottom:24px"></div>
 
+    <div id="audioPlayerWrap" style="display:none;margin-bottom:20px">
+      <div class="panel" style="padding:16px 20px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-faint);letter-spacing:.08em">REDARE APEL</div>
+          <audio id="callAudio" controls style="flex:1;height:36px;accent-color:var(--cyan);filter:invert(0)" preload="none"></audio>
+        </div>
+      </div>
+    </div>
+
     <div class="timeline-label">Distribuție vorbitori</div>
     <div class="timeline" id="detailTimeline"></div>
 
@@ -62,6 +71,13 @@ async function pageCallDetail({ id }) {
 }
 
 function renderDetail({ call, segments, pii_mappings, qa }) {
+  // Audio player
+  if (call.audio_url) {
+    const wrap = document.getElementById('audioPlayerWrap');
+    document.getElementById('callAudio').src = call.audio_url;
+    wrap.style.display = 'block';
+  }
+
   document.getElementById('breadcrumbId').textContent = call.id.slice(0,8).toUpperCase();
   document.getElementById('detailTitle').textContent = call.filename;
   document.getElementById('detailSubtitle').textContent = `ID-${call.id.slice(0,8).toUpperCase()} · ${new Date(call.created_at).toLocaleString('ro-RO')} · ${call.language?.toUpperCase() || 'RO'}`;

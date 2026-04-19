@@ -35,8 +35,18 @@ def _run_pipeline(call_id: str, tmp_path: str):
         from soniox_client import SonioxClient, analyze_transcript_segments, format_transcript_readable
         from helpers import anonymize_text, normalize, analyze_call
 
-        # Step 1 — STT
+        # Step 1 — STT + upload audio to storage
         _set_status(call_id, "transcribing")
+
+        ext = os.path.splitext(tmp_path)[1].lower()
+        storage_key = f"{call_id}{ext}"
+        with open(tmp_path, "rb") as f:
+            audio_bytes = f.read()
+        mime = {"wav":"audio/wav","mp3":"audio/mpeg","m4a":"audio/mp4","flac":"audio/flac","ogg":"audio/ogg"}.get(ext.lstrip("."), "audio/wav")
+        supabase.storage.from_("call-audio").upload(storage_key, audio_bytes, {"content-type": mime, "upsert": "true"})
+        audio_url = f"{os.getenv('SUPABASE_URL')}/storage/v1/object/public/call-audio/{storage_key}"
+        supabase.table("calls").update({"audio_url": audio_url}).eq("id", call_id).execute()
+
         client = SonioxClient()
         transcript = client.transcribe(tmp_path)
         segments = analyze_transcript_segments(transcript)
