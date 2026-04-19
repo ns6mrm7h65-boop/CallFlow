@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<title>Call Flow</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/layout.css">
+</head>
+<body>
+<div class="grain"></div>
+
+<div class="shell">
+  <nav class="nav" id="nav"></nav>
+  <main id="page"></main>
+</div>
+
+<div id="uploadMount"></div>
+
+<!-- Core -->
+<script src="assets/js/api.js"></script>
+<script src="assets/js/router.js"></script>
+
+<!-- Components -->
+<script src="assets/js/components/nav.js"></script>
+<script src="assets/js/components/upload.js"></script>
+
+<!-- Pages -->
+<script src="assets/js/pages/dashboard.js"></script>
+<script src="assets/js/pages/calls.js"></script>
+<script src="assets/js/pages/call-detail.js"></script>
+
+<script>
+  // Boot
+  renderNav();
+  UploadModal.render();
+
+  // Register routes
+  Router.register('/dashboard', pageDashboard);
+  Router.register('/calls',     pageCalls);
+  Router.register('/calls/:id', pageCallDetail);
+  Router.register('/reports',   () => {
+    document.getElementById('page').innerHTML = `
+      <div class="page-header"><div><div class="page-title">Rapoarte</div><div class="page-sub">În curând</div></div></div>
+      <div class="panel"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text">Rapoartele sunt în dezvoltare.</div></div></div>`;
+  });
+
+  Router.init();
+
+  // Global ESC closes modals
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  });
+</script>
+</body>
+</html>

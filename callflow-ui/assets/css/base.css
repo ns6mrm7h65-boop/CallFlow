@@ -1,0 +1,80 @@
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --bg-0: #05070d;
+  --bg-1: #0a0f1c;
+  --ink: #e6ecff;
+  --ink-dim: #8892b8;
+  --ink-faint: #4a5578;
+  --cyan: #00e5ff;
+  --violet: #8b5cf6;
+  --magenta: #ff3ea5;
+  --lime: #b4ff39;
+  --orange: #ff9500;
+
+  --glass: rgba(255, 255, 255, 0.04);
+  --glass-strong: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-bright: rgba(0, 229, 255, 0.25);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+
+  --font-sans: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg-0);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(139,92,246,.18), transparent 60%),
+    radial-gradient(ellipse 70% 50% at 85% 30%, rgba(0,229,255,.15), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 50% 90%, rgba(255,62,165,.1), transparent 60%),
+    linear-gradient(180deg, #05070d 0%, #0a0f1c 100%);
+}
+
+/* ── Grain overlay ─────────────────────────────────────────────────────────── */
+.grain {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: .06;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='3'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  mix-blend-mode: overlay;
+}
+
+/* ── Typography ────────────────────────────────────────────────────────────── */
+h1 { font-size: 72px; font-weight: 700; letter-spacing: -.04em; line-height: .95;
+  background: linear-gradient(180deg, #fff 0%, #8892b8 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 36px; font-weight: 700; letter-spacing: -.03em; }
+h3 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+
+.mono { font-family: var(--font-mono); }
+.ink-dim { color: var(--ink-dim); }
+.ink-faint { color: var(--ink-faint); }
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes pulse { 50% { opacity: .3; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pipePulse { 50% { box-shadow: 0 0 12px rgba(0,229,255,.4); } }
+
+.fade-in { animation: fadeSlide .3s ease forwards; }
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
