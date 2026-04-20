@@ -193,6 +193,8 @@
 .turn-bubble { display: inline-block; padding: 8px 12px; font-size: 12px; line-height: 1.5; max-width: 95%; }
 .turn.agent .turn-bubble { background: rgba(0,229,255,.07); border: 1px solid rgba(0,229,255,.12); border-radius: 3px 10px 10px 10px; color: var(--ink); }
 .turn.client .turn-bubble { background: var(--glass-strong); border: 1px solid var(--border); border-radius: 10px 3px 10px 10px; color: var(--ink-dim); }
+.turn-active { background: rgba(0,229,255,.04); border-radius: 10px; outline: 1px solid rgba(0,229,255,.2); }
+.turn-active .turn-bubble { border-color: rgba(0,229,255,.35) !important; }
 .turn-stats { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 .turn.client .turn-stats { justify-content: flex-end; }
 .stat-chip { font-family: var(--font-mono); font-size: 9px; color: var(--ink-faint); padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); }

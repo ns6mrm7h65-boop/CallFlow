@@ -25,11 +25,11 @@ async function pageCallDetail({ id }) {
 
     <div class="meta-strip" id="detailMeta" style="margin-bottom:24px"></div>
 
-    <div id="audioPlayerWrap" style="display:none;margin-bottom:20px">
-      <div class="panel" style="padding:16px 20px">
+    <div id="audioPlayerWrap" style="display:none;position:sticky;top:0;z-index:50;margin-bottom:20px">
+      <div class="panel" style="padding:12px 20px;border-bottom:1px solid var(--border);backdrop-filter:blur(20px);background:var(--glass-strong)">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-faint);letter-spacing:.08em">REDARE APEL</div>
-          <audio id="callAudio" controls style="flex:1;height:36px;accent-color:var(--cyan);filter:invert(0)" preload="none"></audio>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-faint);letter-spacing:.08em;white-space:nowrap">▶ APEL</div>
+          <audio id="callAudio" controls style="flex:1;height:32px;accent-color:var(--cyan)" preload="none"></audio>
         </div>
       </div>
     </div>
@@ -71,11 +71,24 @@ async function pageCallDetail({ id }) {
 }
 
 function renderDetail({ call, segments, pii_mappings, qa }) {
-  // Audio player
+  // Audio player + sync
   if (call.audio_url) {
-    const wrap = document.getElementById('audioPlayerWrap');
-    document.getElementById('callAudio').src = call.audio_url;
-    wrap.style.display = 'block';
+    document.getElementById('audioPlayerWrap').style.display = 'block';
+    const audio = document.getElementById('callAudio');
+    audio.src = call.audio_url;
+    audio.addEventListener('timeupdate', () => {
+      const ms = audio.currentTime * 1000;
+      let active = null;
+      document.querySelectorAll('.turn[data-start]').forEach(el => {
+        const s = +el.dataset.start, e = +el.dataset.end;
+        if (ms >= s && ms < e) active = el;
+        el.classList.remove('turn-active');
+      });
+      if (active) {
+        active.classList.add('turn-active');
+        active.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
   }
 
   document.getElementById('breadcrumbId').textContent = call.id.slice(0,8).toUpperCase();
@@ -124,12 +137,19 @@ function renderDetail({ call, segments, pii_mappings, qa }) {
     const role = s.role.toLowerCase();
     const div = document.createElement('div');
     div.className = `turn ${role}`;
+    if (s.start_ms != null) div.dataset.start = s.start_ms;
+    if (s.end_ms != null)   div.dataset.end   = s.end_ms;
+
+    const timeClick = s.start_ms != null
+      ? `onclick="(function(){const a=document.getElementById('callAudio');if(a&&a.src){a.currentTime=${s.start_ms/1000};a.play();}})()" style="cursor:pointer;color:var(--cyan)" title="Sari la acest moment"`
+      : '';
+
     div.innerHTML = `
       <div class="turn-avatar">${role==='agent'?'AG':'CL'}</div>
       <div class="turn-body">
         <div class="turn-meta">
           <span class="turn-role">${s.role}</span>
-          <span>${msToMmss(s.start_ms)}–${msToMmss(s.end_ms)}</span>
+          <span ${timeClick}>${msToMmss(s.start_ms)}–${msToMmss(s.end_ms)}</span>
           ${s.confidence ? `<span>${Math.round(s.confidence*100)}%</span>` : ''}
         </div>
         <div class="turn-bubble">${s.text}</div>
