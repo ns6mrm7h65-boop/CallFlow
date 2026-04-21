@@ -1,5 +1,3 @@
-let _realtimeSub = null;
-
 async function pageCalls() {
   document.getElementById('page').innerHTML = `
     <div class="page-header">
@@ -23,8 +21,7 @@ async function pageCalls() {
   await loadCallsList();
 
   // Realtime subscription
-  if (_realtimeSub) _realtimeSub.close();
-  _realtimeSub = sb.subscribe('calls', () => loadCallsList());
+  SubscriptionManager.subscribe('calls-list', 'calls', () => loadCallsList());
 }
 
 let _allCalls = [];

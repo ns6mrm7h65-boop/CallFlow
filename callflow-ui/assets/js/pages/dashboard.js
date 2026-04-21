@@ -39,7 +39,7 @@ async function pageDashboard() {
   }
 
   // Realtime: refresh KPIs on new call
-  sb.subscribe('calls', () => {
+  SubscriptionManager.subscribe('dashboard-kpis', 'calls', () => {
     DB.getKPIs().then(renderKPIs).catch(()=>{});
     DB.getRecentActivity().then(r => { renderRecentCalls(r); renderActivity(r); }).catch(()=>{});
   });
