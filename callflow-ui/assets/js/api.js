@@ -58,7 +58,7 @@ const API = {
 /* ── Supabase data helpers ───────────────────────────────────────────────────── */
 const DB = {
   async listCalls() {
-    return sb.query('calls', '?select=*&order=created_at.desc&limit=50');
+    return sb.query('calls', `?select=*&order=created_at.desc&limit=${CONFIG.CALLS_LIST_LIMIT}`);
   },
 
   async getKPIs() {
@@ -70,12 +70,12 @@ const DB = {
     const avgScore = qa.length ? Math.round(qa.reduce((s, r) => s + (r.scor_final || 0), 0) / qa.length) : null;
     const totalDurMs = done.reduce((s, c) => s + (c.duration_ms || 0), 0);
     const avgDurMs = done.length ? Math.round(totalDurMs / done.length) : null;
-    const flagged = qa.filter(r => r.scor_final != null && r.scor_final < 50).length;
+    const flagged = qa.filter(r => r.scor_final != null && r.scor_final < CONFIG.SCORE_WARNING).length;
     return { total: calls.length, done: done.length, avgScore, avgDurMs, flagged };
   },
 
   async getRecentActivity() {
-    return sb.query('calls', '?select=id,filename,status,created_at,duration_ms&order=created_at.desc&limit=5');
+    return sb.query('calls', `?select=id,filename,status,created_at,duration_ms&order=created_at.desc&limit=${CONFIG.RECENT_CALLS_LIMIT}`);
   }
 };
 
@@ -94,16 +94,16 @@ function formatBytes(b) {
 
 function timeAgo(iso) {
   const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (diff < 60) return 'acum ' + diff + 's';
-  if (diff < 3600) return 'acum ' + Math.floor(diff / 60) + 'm';
-  if (diff < 86400) return 'acum ' + Math.floor(diff / 3600) + 'h';
+  if (diff < CONFIG.TIME_MINUTE) return 'acum ' + diff + 's';
+  if (diff < CONFIG.TIME_HOUR)   return 'acum ' + Math.floor(diff / CONFIG.TIME_MINUTE) + 'm';
+  if (diff < CONFIG.TIME_DAY)    return 'acum ' + Math.floor(diff / CONFIG.TIME_HOUR) + 'h';
   return new Date(iso).toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' });
 }
 
 function scoreColor(score) {
   if (score == null) return 'var(--ink-dim)';
-  if (score >= 70) return 'var(--lime)';
-  if (score >= 50) return 'var(--orange)';
+  if (score >= CONFIG.SCORE_GOOD) return 'var(--lime)';
+  if (score >= CONFIG.SCORE_WARNING) return 'var(--orange)';
   return 'var(--magenta)';
 }
 

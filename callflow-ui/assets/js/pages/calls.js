@@ -80,7 +80,7 @@ function renderCallsList(calls) {
 
     const sc = c.qa_score;
     const date = new Date(c.created_at).toLocaleString('ro-RO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-    const tagCls = c.status === 'done' ? (sc != null && sc < 50 ? 'tag-flag' : 'tag-ok') : c.status === 'error' ? 'tag-error' : 'tag-processing';
+    const tagCls = c.status === 'done' ? (sc != null && sc < CONFIG.SCORE_WARNING ? 'tag-flag' : 'tag-ok') : c.status === 'error' ? 'tag-error' : 'tag-processing';
 
     row.querySelector('.call-name').textContent = c.filename;
     row.querySelector('.call-meta').textContent = `ID-${c.id.slice(0,8).toUpperCase()} · ${date} · ${formatBytes(c.file_size)}`;

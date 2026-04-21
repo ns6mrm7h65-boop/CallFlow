@@ -102,7 +102,7 @@ const UploadModal = {
           this._setStep(step, 'running', STATUS_LABEL[s.status] || s.status);
         }
       } catch(e) { /* ignore transient errors */ }
-    }, 2500);
+    }, CONFIG.UPLOAD_POLL_INTERVAL_MS);
   },
 
   render() {

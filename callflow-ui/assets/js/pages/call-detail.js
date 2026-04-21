@@ -155,7 +155,7 @@ function renderDetail({ call, segments, pii_mappings, qa }) {
         <div class="turn-bubble">${s.text}</div>
         <div class="turn-stats">
           ${s.duration_ms ? `<span class="stat-chip">${(s.duration_ms/1000).toFixed(1)}s</span>` : ''}
-          ${s.wpm ? `<span class="stat-chip ${s.wpm>220?'wpm-high':''}">${Math.round(s.wpm)} cuv/min</span>` : ''}
+          ${s.wpm ? `<span class="stat-chip ${s.wpm>CONFIG.WPM_HIGH?'wpm-high':''}">${Math.round(s.wpm)} cuv/min</span>` : ''}
         </div>
       </div>`;
     tc.appendChild(div);
@@ -208,7 +208,6 @@ function renderQASection(qa) {
   sec.style.display = 'block';
   const sc = qa.scor_final;
   const circumference = 289;
-  const offset = circumference - (sc / 100) * circumference;
   const sentColor = qa.sentiment_client==='Negativ'?'var(--magenta)':qa.sentiment_client==='Neutru'?'var(--ink-dim)':'var(--lime)';
   const catDefs = [
     {key:'scor_structura',    label:'Structură',     max:40, color:'#00e5ff'},
