@@ -7,7 +7,10 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 /* ── Supabase REST helper ─────────────────────────────────────────────────────── */
 const sb = {
-  _h: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}`, 'Content-Type': 'application/json' },
+  get _h() {
+    const token = localStorage.getItem('cf_token') || SUPABASE_ANON;
+    return { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+  },
 
   async query(table, params = '') {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}${params}`, { headers: { ...this._h, 'Prefer': 'return=representation' } });
@@ -34,22 +37,27 @@ const sb = {
 
 /* ── FastAPI calls ───────────────────────────────────────────────────────────── */
 const API = {
+  _authHeader() {
+    const token = localStorage.getItem('cf_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  },
+
   async uploadCall(file) {
     const form = new FormData();
     form.append('file', file);
-    const r = await fetch(`${API_BASE}/calls`, { method: 'POST', body: form });
+    const r = await fetch(`${API_BASE}/calls`, { method: 'POST', body: form, headers: this._authHeader() });
     if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
     return r.json();
   },
 
   async getCallStatus(callId) {
-    const r = await fetch(`${API_BASE}/calls/${callId}/status`);
+    const r = await fetch(`${API_BASE}/calls/${callId}/status`, { headers: this._authHeader() });
     if (!r.ok) throw new Error(`Status error: ${r.status}`);
     return r.json();
   },
 
   async getCallDetail(callId) {
-    const r = await fetch(`${API_BASE}/calls/${callId}`);
+    const r = await fetch(`${API_BASE}/calls/${callId}`, { headers: this._authHeader() });
     if (!r.ok) throw new Error(`Detail error: ${r.status}`);
     return r.json();
   }

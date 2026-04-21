@@ -1,4 +1,5 @@
 function renderNav() {
+  const user = Auth.getUser();
   document.getElementById('nav').innerHTML = `
     <a class="logo" href="#/dashboard">
       <div class="logo-mark">
@@ -12,7 +13,8 @@ function renderNav() {
       <a href="#/reports"   data-route="reports">Rapoarte</a>
     </div>
     <div class="nav-right">
-      <span class="nav-user">Contul meu</span>
+      <span class="nav-user" style="font-size:12px;color:var(--ink-dim)">${user?.email || ''}</span>
       <button class="btn btn-primary" onclick="UploadModal.open()">+ Încarcă apel</button>
+      <button class="btn btn-ghost" onclick="Auth.logout()" style="padding:8px 12px;font-size:13px">↪ Ieșire</button>
     </div>`;
 }

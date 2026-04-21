@@ -24,6 +24,7 @@
 <!-- Core -->
 <script src="assets/js/config.js"></script>
 <script src="assets/js/api.js"></script>
+<script src="assets/js/auth.js"></script>
 <script src="assets/js/subscriptionManager.js"></script>
 <script src="assets/js/router.js"></script>
 
@@ -32,16 +33,18 @@
 <script src="assets/js/components/upload.js"></script>
 
 <!-- Pages -->
+<script src="assets/js/pages/login.js"></script>
 <script src="assets/js/pages/dashboard.js"></script>
 <script src="assets/js/pages/calls.js"></script>
 <script src="assets/js/pages/call-detail.js"></script>
 
 <script>
-  // Boot
-  renderNav();
-  UploadModal.render();
+  // Boot — nav only if logged in
+  if (Auth.isLoggedIn()) { renderNav(); UploadModal.render(); }
+  else { document.getElementById('nav').style.display = 'none'; }
 
   // Register routes
+  Router.register('/login',     pageLogin);
   Router.register('/dashboard', pageDashboard);
   Router.register('/calls',     pageCalls);
   Router.register('/calls/:id', pageCallDetail);

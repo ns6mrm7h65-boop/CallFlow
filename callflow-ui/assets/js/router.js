@@ -8,6 +8,13 @@ const Router = {
   resolve() {
     const hash = window.location.hash.slice(1) || '/dashboard';
 
+    // Auth guard — redirect to login if not authenticated
+    if (hash !== '/login' && !Auth.isLoggedIn()) {
+      this._render(this.routes['/login'], {});
+      this.currentPath = '/login';
+      return;
+    }
+
     for (const [pattern, handler] of Object.entries(this.routes)) {
       const keys = [];
       const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; }) + '$');
