@@ -3,6 +3,13 @@ import re
 from typing import Tuple, Dict
 
 
+class RetryableError(Exception):
+    """Transient error — safe to retry automatically."""
+
+class TerminalError(Exception):
+    """Permanent error — do not retry."""
+
+
 def anonymize_text(text: str) -> Tuple[str, Dict[str, str]]:
     """
     Robust anonymization for Romanian ASR text (Soniox-like).
@@ -176,8 +183,11 @@ def _call_haiku(ctrl: "ClaudeController", text: str) -> list:
             )
             return json.loads(_parse_haiku_json(response))
         except Exception as e:
+            msg = str(e).lower()
+            if "401" in msg or "403" in msg or "invalid api key" in msg:
+                raise TerminalError(f"Bad API key: {e}")
             if attempt == _MAX_RETRIES - 1:
-                raise
+                raise RetryableError(f"AI classify failed after {_MAX_RETRIES} attempts: {e}")
             time.sleep(2 ** attempt)
 
 
@@ -254,6 +264,9 @@ def analyze_call(conversation: dict, anonymized_text: str = None) -> dict:
             )
             return json.loads(_parse_haiku_json(response))
         except Exception as e:
+            msg = str(e).lower()
+            if "401" in msg or "403" in msg or "invalid api key" in msg:
+                raise TerminalError(f"Bad API key: {e}")
             if attempt == _MAX_RETRIES - 1:
-                raise
+                raise RetryableError(f"AI QA failed after {_MAX_RETRIES} attempts: {e}")
             time.sleep(2 ** attempt)

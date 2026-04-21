@@ -2,12 +2,23 @@ import os
 import uuid
 import tempfile
 import threading
+import logging
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from supabase import create_client
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+
+class RetryableError(Exception):
+    """Transient error — safe to retry automatically."""
+
+class TerminalError(Exception):
+    """Permanent error — do not retry."""
 
 load_dotenv()
 
@@ -39,16 +50,32 @@ def _run_pipeline(call_id: str, tmp_path: str):
         _set_status(call_id, "transcribing")
 
         ext = os.path.splitext(tmp_path)[1].lower()
+        if ext not in {".wav", ".mp3", ".m4a", ".flac", ".ogg"}:
+            raise TerminalError(f"Format audio nesuportat: {ext}")
+
         storage_key = f"{call_id}{ext}"
         with open(tmp_path, "rb") as f:
             audio_bytes = f.read()
         mime = {"wav":"audio/wav","mp3":"audio/mpeg","m4a":"audio/mp4","flac":"audio/flac","ogg":"audio/ogg"}.get(ext.lstrip("."), "audio/wav")
-        supabase.storage.from_("call-audio").upload(storage_key, audio_bytes, {"content-type": mime, "upsert": "true"})
-        audio_url = f"{os.getenv('SUPABASE_URL')}/storage/v1/object/public/call-audio/{storage_key}"
-        supabase.table("calls").update({"audio_url": audio_url}).eq("id", call_id).execute()
 
-        client = SonioxClient()
-        transcript = client.transcribe(tmp_path)
+        try:
+            supabase.storage.from_("call-audio").upload(storage_key, audio_bytes, {"content-type": mime, "upsert": "true"})
+            audio_url = f"{os.getenv('SUPABASE_URL')}/storage/v1/object/public/call-audio/{storage_key}"
+            supabase.table("calls").update({"audio_url": audio_url}).eq("id", call_id).execute()
+        except Exception as e:
+            raise RetryableError(f"Supabase Storage upload failed: {e}")
+
+        try:
+            client = SonioxClient()
+            transcript = client.transcribe(tmp_path)
+        except Exception as e:
+            msg = str(e).lower()
+            if "timeout" in msg or "connection" in msg or "rate" in msg or "429" in msg:
+                raise RetryableError(f"Soniox STT transient error: {e}")
+            if "invalid" in msg or "format" in msg or "401" in msg or "403" in msg:
+                raise TerminalError(f"Soniox STT permanent error: {e}")
+            raise RetryableError(f"Soniox STT error: {e}")
+
         segments = analyze_transcript_segments(transcript)
         raw_text = format_transcript_readable(transcript)
 
@@ -58,16 +85,25 @@ def _run_pipeline(call_id: str, tmp_path: str):
         # Step 2 — Anonymize
         anon_text, pii_map = anonymize_text(raw_text)
 
-        pii_rows = [{"call_id": call_id, "original": k, "placeholder": v} for k, v in pii_map.items()]
-        if pii_rows:
-            supabase.table("pii_mappings").insert(pii_rows).execute()
+        try:
+            pii_rows = [{"call_id": call_id, "original": k, "placeholder": v} for k, v in pii_map.items()]
+            if pii_rows:
+                supabase.table("pii_mappings").insert(pii_rows).execute()
+        except Exception as e:
+            raise RetryableError(f"DB insert pii_mappings failed: {e}")
 
         _set_status(call_id, "classifying", {"pii_count": len(pii_map)})
 
         # Step 3 — Classify
-        conversation = normalize(anon_text)
-        turns = conversation.get("conversation", [])
+        try:
+            conversation = normalize(anon_text)
+        except Exception as e:
+            msg = str(e).lower()
+            if "429" in msg or "overloaded" in msg or "timeout" in msg:
+                raise RetryableError(f"AI classify transient error: {e}")
+            raise TerminalError(f"AI classify failed: {e}")
 
+        turns = conversation.get("conversation", [])
         seg_rows = []
         for i, (seg, turn) in enumerate(zip(segments, turns)):
             seg_rows.append({
@@ -82,33 +118,54 @@ def _run_pipeline(call_id: str, tmp_path: str):
                 "wpm": seg.get("wpm"),
                 "confidence": turn.get("confidence"),
             })
-        if seg_rows:
-            supabase.table("segments").insert(seg_rows).execute()
+
+        try:
+            if seg_rows:
+                supabase.table("segments").insert(seg_rows).execute()
+        except Exception as e:
+            raise RetryableError(f"DB insert segments failed: {e}")
 
         _set_status(call_id, "analyzing", {"segment_count": len(seg_rows)})
 
         # Step 4 — QA
-        qa = analyze_call(conversation, anon_text)
-        cats = qa.get("categorii", {})
+        try:
+            qa = analyze_call(conversation, anon_text)
+        except Exception as e:
+            msg = str(e).lower()
+            if "429" in msg or "overloaded" in msg or "timeout" in msg:
+                raise RetryableError(f"AI QA transient error: {e}")
+            raise TerminalError(f"AI QA failed: {e}")
 
-        supabase.table("qa_results").insert({
-            "call_id": call_id,
-            "scor_final": qa.get("scor_final"),
-            "rezumat": qa.get("rezumat"),
-            "empatie": qa.get("empatie"),
-            "sentiment_client": qa.get("sentiment_client"),
-            "scor_structura": cats.get("structura", {}).get("scor"),
-            "scor_calitate": cats.get("calitate", {}).get("scor"),
-            "scor_profesionalism": cats.get("profesionalism", {}).get("scor"),
-            "scor_ritm": cats.get("ritm_livrare", {}).get("scor"),
-            "scor_penalizari": cats.get("penalizari", {}).get("scor"),
-            "penalizari_detalii": cats.get("penalizari", {}).get("motive", []),
-            "checklist": qa.get("checklist", {}),
-        }).execute()
+        cats = qa.get("categorii", {})
+        try:
+            supabase.table("qa_results").insert({
+                "call_id": call_id,
+                "scor_final": qa.get("scor_final"),
+                "rezumat": qa.get("rezumat"),
+                "empatie": qa.get("empatie"),
+                "sentiment_client": qa.get("sentiment_client"),
+                "scor_structura": cats.get("structura", {}).get("scor"),
+                "scor_calitate": cats.get("calitate", {}).get("scor"),
+                "scor_profesionalism": cats.get("profesionalism", {}).get("scor"),
+                "scor_ritm": cats.get("ritm_livrare", {}).get("scor"),
+                "scor_penalizari": cats.get("penalizari", {}).get("scor"),
+                "penalizari_detalii": cats.get("penalizari", {}).get("motive", []),
+                "checklist": qa.get("checklist", {}),
+            }).execute()
+        except Exception as e:
+            raise RetryableError(f"DB insert qa_results failed: {e}")
 
         _set_status(call_id, "done")
+        logger.info(f"Pipeline done: {call_id}")
 
+    except RetryableError as e:
+        logger.warning(f"Retryable error [{call_id}]: {e}")
+        _set_status(call_id, "error", {"error_msg": f"[retryable] {e}"})
+    except TerminalError as e:
+        logger.error(f"Terminal error [{call_id}]: {e}")
+        _set_status(call_id, "error", {"error_msg": str(e)})
     except Exception as e:
+        logger.error(f"Unexpected error [{call_id}]: {e}")
         _set_status(call_id, "error", {"error_msg": str(e)})
     finally:
         try:
