@@ -4,9 +4,11 @@ import tempfile
 import threading
 import logging
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZIPMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
@@ -26,6 +28,7 @@ load_dotenv()
 
 app = FastAPI(title="CallFlow API")
 
+app.add_middleware(GZIPMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -251,13 +254,23 @@ def list_calls():
 
 @app.get("/calls/{call_id}")
 def get_call(call_id: str):
-    call = supabase.table("calls").select("*").eq("id", call_id).single().execute()
+    call = supabase.table("calls") \
+        .select("id,filename,file_size,status,duration_ms,language,speaker_count,segment_count,pii_count,audio_url,created_at,updated_at") \
+        .eq("id", call_id).single().execute()
     if not call.data:
         raise HTTPException(404, "Apel negăsit")
 
-    segments = supabase.table("segments").select("*").eq("call_id", call_id).order("position").execute()
-    pii = supabase.table("pii_mappings").select("*").eq("call_id", call_id).execute()
-    qa = supabase.table("qa_results").select("*").eq("call_id", call_id).maybe_single().execute()
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        seg_f = ex.submit(lambda: supabase.table("segments")
+            .select("position,role,speaker,text,start_ms,end_ms,duration_ms,wpm,confidence")
+            .eq("call_id", call_id).order("position").execute())
+        pii_f = ex.submit(lambda: supabase.table("pii_mappings")
+            .select("original,placeholder")
+            .eq("call_id", call_id).execute())
+        qa_f  = ex.submit(lambda: supabase.table("qa_results")
+            .select("scor_final,rezumat,empatie,sentiment_client,scor_structura,scor_calitate,scor_profesionalism,scor_ritm,scor_penalizari,penalizari_detalii,checklist")
+            .eq("call_id", call_id).maybe_single().execute())
+        segments, pii, qa = seg_f.result(), pii_f.result(), qa_f.result()
 
     return {
         "call": call.data,
