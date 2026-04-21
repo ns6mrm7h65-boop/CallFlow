@@ -3,10 +3,12 @@ import uuid
 import tempfile
 import threading
 import logging
+from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 from supabase import create_client
 
@@ -32,6 +34,47 @@ app.add_middleware(
 )
 
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: Optional[str] = None
+    company: Optional[str] = None
+
+
+@app.post("/auth/register", status_code=201)
+async def register(req: RegisterRequest):
+    import re
+    if not re.search(r'[A-Z]', req.password) or \
+       not re.search(r'[0-9]', req.password) or \
+       not re.search(r'[^a-zA-Z0-9]', req.password) or \
+       len(req.password) < 8:
+        raise HTTPException(400, "Parola trebuie să aibă min 8 caractere, o majusculă, un număr și un caracter special")
+
+    try:
+        result = supabase.auth.sign_up({
+            "email": req.email,
+            "password": req.password,
+            "options": {"data": {"full_name": req.full_name, "company": req.company}}
+        })
+    except Exception as e:
+        msg = str(e).lower()
+        if "already" in msg or "exists" in msg:
+            raise HTTPException(400, "Email-ul există deja")
+        logger.error(f"Register error: {e}")
+        raise HTTPException(500, "Eroare la înregistrare")
+
+    if not result.user:
+        raise HTTPException(400, "Email-ul există deja")
+
+    logger.info(f"New user registered: {req.email}")
+    return {
+        "user_id": result.user.id,
+        "email": result.user.email,
+        "token": result.session.access_token if result.session else None,
+        "token_type": "Bearer"
+    }
 
 
 def _set_status(call_id: str, status: str, extra: dict = None):
