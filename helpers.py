@@ -1,6 +1,11 @@
 import json
 import re
-from typing import Tuple, Dict
+import sys
+import os
+from typing import Tuple, Dict, List
+
+sys.path.insert(0, os.path.dirname(__file__))
+from data.romanian_names import ROMANIAN_FIRST_NAMES, ROMANIAN_LAST_NAMES, EXCLUDE_WORDS
 
 
 class RetryableError(Exception):
@@ -10,91 +15,98 @@ class TerminalError(Exception):
     """Permanent error — do not retry."""
 
 
-def anonymize_text(text: str) -> Tuple[str, Dict[str, str]]:
-    """
-    Robust anonymization for Romanian ASR text (Soniox-like).
+def _validate_phone(phone_str: str) -> bool:
+    clean = re.sub(r'[\s\-]', '', phone_str)
+    if clean.startswith('+40'):
+        clean = clean[3:]
+    elif clean.startswith('0'):
+        clean = clean[1:]
+    else:
+        return False
+    if not clean.isdigit() or len(clean) != 9:
+        return False
+    if clean[0] not in ('2', '3', '7'):
+        return False
+    # Reject if original had a space between every digit
+    if phone_str.count(' ') > 4:
+        return False
+    return True
 
-    Detects:
-    - phone numbers
-    - emails
-    - CNP (very robust, fuzzy)
-    - names (basic heuristic)
-    - long numeric sequences (fallback GDPR-safe)
 
-    Returns:
-        anonymized_text
-        mapping (original → placeholder)
-    """
+def _validate_cnp(cnp_str: str) -> bool:
+    cnp = cnp_str.replace(' ', '')
+    if not cnp.isdigit() or len(cnp) != 13:
+        return False
+    if cnp[0] == '0':
+        return False
+    month = int(cnp[3:5])
+    if not 1 <= month <= 12:
+        return False
+    day = int(cnp[5:7])
+    if not 1 <= day <= 31:
+        return False
+    county = int(cnp[7:9])
+    if not 1 <= county <= 52:
+        return False
+    return True
 
-    mapping: Dict[str, str] = {}
-    counter = {
-        "PHONE": 1,
-        "EMAIL": 1,
-        "NAME": 1,
-        "CNP": 1
-    }
 
-    def replace(pattern, label, text, flags=0):
-        def _repl(match):
-            value = match.group(0)
-
-            if value in mapping:
-                return mapping[value]
-
-            placeholder = f"{label}_{counter[label]}"
-            mapping[value] = placeholder
-            counter[label] += 1
-            return placeholder
-
-        return re.sub(pattern, _repl, text, flags=flags)
-
-    # -------------------------
-    # 📞 PHONE (Romania + variations)
-    # -------------------------
-    phone_pattern = r'\b(?:\+40|0)?\s?7\d{2}[\s\-]?\d{3}[\s\-]?\d{3}\b'
-    text = replace(phone_pattern, "PHONE", text)
-
-    # -------------------------
-    # 📧 EMAIL
-    # -------------------------
-    email_pattern = r'\b[\w\.-]+@[\w\.-]+\.\w+\b'
-    text = replace(email_pattern, "EMAIL", text)
-
-    # -------------------------
-    # 🧾 CNP (ROBUST + GDPR SAFE)
-    # -------------------------
-
-    # 1. Exact 13 digits (standard CNP)
-    cnp_pattern = r'\b\d{13}\b'
-    text = replace(cnp_pattern, "CNP", text)
-
-    # 2. Long numeric sequences (fallback safety net)
-    # catches broken ASR like: 1950108 123456
-    suspicious_number_pattern = r'\b\d{10,15}\b'
-    text = replace(suspicious_number_pattern, "CNP", text)
-
-    # 3. Fuzzy keyword detection (cnp, c n p, cenep, etc.)
-    cnp_keyword_pattern = r'\b(c\s?n\s?p|cnp|cenep|cod numeric personal)\b[\s:]*([\d\s]{5,20})'
-
-    def cnp_repl(match):
+def _detect_names(text: str) -> List[str]:
+    found = []
+    pattern = r'\b([A-ZĂÂÎȘȚ][a-zăâîșț\-]+)(?:\s+([A-ZĂÂÎȘȚ][a-zăâîșț\-]+))+\b'
+    for match in re.finditer(pattern, text):
         full = match.group(0)
+        words = full.split()
+        if any(w in EXCLUDE_WORDS for w in words):
+            continue
+        first, last = words[0], words[-1]
+        if first in ROMANIAN_FIRST_NAMES or last in ROMANIAN_LAST_NAMES:
+            found.append(full)
+    return found
 
-        if full in mapping:
-            return mapping[full]
 
-        placeholder = f"CNP_{counter['CNP']}"
-        mapping[full] = placeholder
-        counter["CNP"] += 1
-        return placeholder
+def anonymize_text(text: str) -> Tuple[str, Dict[str, str]]:
+    mapping: Dict[str, str] = {}
+    counter = {"PHONE": 1, "EMAIL": 1, "CNP": 1, "NAME": 1}
 
-    text = re.sub(cnp_keyword_pattern, cnp_repl, text, flags=re.IGNORECASE)
+    def _sub(value, label):
+        if value not in mapping:
+            mapping[value] = f"{label}_{counter[label]}"
+            counter[label] += 1
+        return mapping[value]
 
-    # -------------------------
-    # 👤 NAME (basic heuristic)
-    # ex: "Gheorghe Pribeanu"
-    # -------------------------
-    name_pattern = r'\b[A-ZĂÂÎȘȚ][a-zăâîșț]+(?:\s+[A-ZĂÂÎȘȚ][a-zăâîșț]+)+\b'
-    text = replace(name_pattern, "NAME", text)
+    # 1. PHONE
+    for m in re.finditer(r'(?:\+40[\s\-]?|(?<!\d)0)\s?7\d{2}[\s\-]?\d{3}[\s\-]?\d{3}\b', text):
+        phone = m.group(0)
+        if _validate_phone(phone):
+            text = text.replace(phone, _sub(phone, "PHONE"), 1)
+
+    # 2. EMAIL
+    for m in re.finditer(r'\b[a-zA-Z0-9][a-zA-Z0-9._%+\-]*@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b', text):
+        email = m.group(0)
+        text = text.replace(email, _sub(email, "EMAIL"), 1)
+
+    # 3. CNP — exact 13 digits validated + keyword context
+    for m in re.finditer(r'\b\d{13}\b', text):
+        cnp = m.group(0)
+        if _validate_cnp(cnp):
+            text = text.replace(cnp, _sub(cnp, "CNP"), 1)
+
+    def _cnp_keyword_repl(match):
+        full = match.group(0)
+        digits = re.sub(r'\D', '', match.group(2))
+        if len(digits) == 13 and _validate_cnp(digits):
+            return _sub(digits, "CNP")
+        return full
+
+    text = re.sub(
+        r'\b(c\s?n\s?p|cnp|cenep|cod numeric personal)\b[\s:]*([\d\s]{5,20})',
+        _cnp_keyword_repl, text, flags=re.IGNORECASE
+    )
+
+    # 4. NAMES — dictionary-based
+    for name in _detect_names(text):
+        text = text.replace(name, _sub(name, "NAME"))
 
     return text, mapping
 
