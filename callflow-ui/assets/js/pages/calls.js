@@ -43,8 +43,10 @@ function filterCalls() {
 function renderCallsList(calls) {
   document.getElementById('callsSub').textContent = `${calls.length} apeluri · actualizare live`;
 
+  const container = document.getElementById('callsList');
+
   if (!calls.length) {
-    document.getElementById('callsList').innerHTML = `
+    container.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">📞</div>
         <div class="empty-text">Niciun apel găsit.<br>Apasă "+ Încarcă apel" pentru a începe.</div>
@@ -52,23 +54,44 @@ function renderCallsList(calls) {
     return;
   }
 
-  document.getElementById('callsList').innerHTML = calls.map((c, i) => {
-    const sc = c.qa_score;
-    const scoreHtml = c.status === 'done'
-      ? `<div class="call-score" style="color:${scoreColor(sc)}">${sc != null ? sc+'/100' : '—'}</div>`
-      : `<div></div>`;
-    const tagCls = c.status === 'done' ? (sc != null && sc < 50 ? 'tag-flag' : 'tag-ok') : c.status === 'error' ? 'tag-error' : 'tag-processing';
-    const date = new Date(c.created_at).toLocaleString('ro-RO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  if (!container.firstChild || container.children.length !== calls.length) {
+    container.innerHTML = '';
+  }
 
-    return `<div class="call-row" onclick="Router.navigate('/calls/${c.id}')">
-      <div class="call-avatar" style="background:${AVATARS[i%AVATARS.length]}">${c.filename.slice(0,2).toUpperCase()}</div>
-      <div>
-        <div class="call-name">${c.filename}</div>
-        <div class="call-meta">ID-${c.id.slice(0,8).toUpperCase()} · ${date} · ${formatBytes(c.file_size)}</div>
-      </div>
-      <div class="call-duration">${msToMmss(c.duration_ms)}</div>
-      ${scoreHtml}
-      <div class="tag ${tagCls}">${c.status.toUpperCase()}</div>
-    </div>`;
-  }).join('');
+  calls.forEach((c, i) => {
+    let row = container.querySelector(`[data-call-id="${c.id}"]`);
+
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'call-row';
+      row.dataset.callId = c.id;
+      row.addEventListener('click', () => Router.navigate(`/calls/${c.id}`));
+      row.innerHTML = `
+        <div class="call-avatar" style="background:${AVATARS[i%AVATARS.length]}">${c.filename.slice(0,2).toUpperCase()}</div>
+        <div>
+          <div class="call-name"></div>
+          <div class="call-meta"></div>
+        </div>
+        <div class="call-duration"></div>
+        <div class="call-score"></div>
+        <div class="tag"></div>`;
+      container.appendChild(row);
+    }
+
+    const sc = c.qa_score;
+    const date = new Date(c.created_at).toLocaleString('ro-RO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+    const tagCls = c.status === 'done' ? (sc != null && sc < 50 ? 'tag-flag' : 'tag-ok') : c.status === 'error' ? 'tag-error' : 'tag-processing';
+
+    row.querySelector('.call-name').textContent = c.filename;
+    row.querySelector('.call-meta').textContent = `ID-${c.id.slice(0,8).toUpperCase()} · ${date} · ${formatBytes(c.file_size)}`;
+    row.querySelector('.call-duration').textContent = msToMmss(c.duration_ms);
+
+    const scoreDiv = row.querySelector('.call-score');
+    scoreDiv.textContent = c.status === 'done' ? (sc != null ? sc+'/100' : '—') : '';
+    scoreDiv.style.color = c.status === 'done' ? scoreColor(sc) : '';
+
+    const tagDiv = row.querySelector('.tag');
+    tagDiv.className = 'tag ' + tagCls;
+    tagDiv.textContent = c.status.toUpperCase();
+  });
 }
