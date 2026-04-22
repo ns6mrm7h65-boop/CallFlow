@@ -1,13 +1,15 @@
 import os
-import uuid
 import tempfile
 import threading
 import logging
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
+
+_PIPELINE_SEMAPHORE = threading.Semaphore(4)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZIPMiddleware
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 from supabase import create_client
@@ -26,6 +28,7 @@ load_dotenv()
 
 app = FastAPI(title="CallFlow API")
 
+app.add_middleware(GZIPMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -85,6 +88,7 @@ def _set_status(call_id: str, status: str, extra: dict = None):
 
 
 def _run_pipeline(call_id: str, tmp_path: str):
+    _PIPELINE_SEMAPHORE.acquire()
     try:
         from soniox_client import SonioxClient, analyze_transcript_segments, format_transcript_readable
         from helpers import anonymize_text, normalize, analyze_call
@@ -96,10 +100,26 @@ def _run_pipeline(call_id: str, tmp_path: str):
         if ext not in {".wav", ".mp3", ".m4a", ".flac", ".ogg"}:
             raise TerminalError(f"Format audio nesuportat: {ext}")
 
-        storage_key = f"{call_id}{ext}"
-        with open(tmp_path, "rb") as f:
+        # Transcode to MP3 for universal browser playback (handles ADPCM, exotic codecs)
+        mp3_path = tmp_path + ".mp3"
+        try:
+            import subprocess
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", tmp_path, "-vn", "-ar", "22050", "-ac", "1", "-b:a", "64k", mp3_path],
+                check=True, capture_output=True, timeout=120,
+            )
+        except FileNotFoundError:
+            logger.warning("ffmpeg not installed — falling back to original file for playback")
+            mp3_path = tmp_path
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"ffmpeg transcode failed: {e.stderr.decode()[:200]} — using original")
+            mp3_path = tmp_path
+
+        use_mp3 = mp3_path.endswith(".mp3")
+        storage_key = f"{call_id}.mp3" if use_mp3 else f"{call_id}{ext}"
+        with open(mp3_path, "rb") as f:
             audio_bytes = f.read()
-        mime = {"wav":"audio/wav","mp3":"audio/mpeg","m4a":"audio/mp4","flac":"audio/flac","ogg":"audio/ogg"}.get(ext.lstrip("."), "audio/wav")
+        mime = "audio/mpeg" if use_mp3 else {"wav":"audio/wav","mp3":"audio/mpeg","m4a":"audio/mp4","flac":"audio/flac","ogg":"audio/ogg"}.get(ext.lstrip("."), "audio/wav")
 
         try:
             supabase.storage.from_("call-audio").upload(storage_key, audio_bytes, {"content-type": mime, "upsert": "true"})
@@ -107,6 +127,10 @@ def _run_pipeline(call_id: str, tmp_path: str):
             supabase.table("calls").update({"audio_url": audio_url}).eq("id", call_id).execute()
         except Exception as e:
             raise RetryableError(f"Supabase Storage upload failed: {e}")
+        finally:
+            if use_mp3 and mp3_path != tmp_path:
+                try: os.remove(mp3_path)
+                except Exception: pass
 
         try:
             client = SonioxClient()
@@ -211,6 +235,7 @@ def _run_pipeline(call_id: str, tmp_path: str):
         logger.error(f"Unexpected error [{call_id}]: {e}")
         _set_status(call_id, "error", {"error_msg": str(e)})
     finally:
+        _PIPELINE_SEMAPHORE.release()
         try:
             os.remove(tmp_path)
         except Exception:
@@ -243,6 +268,38 @@ async def upload_call(file: UploadFile = File(...)):
     return {"call_id": call_id, "status": "uploading"}
 
 
+@app.post("/calls/batch")
+async def upload_calls_batch(files: list[UploadFile] = File(...)):
+    allowed = {".wav", ".mp3", ".m4a", ".flac", ".ogg"}
+    results = []
+
+    for file in files:
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in allowed:
+            results.append({"filename": file.filename, "error": f"Format nesuportat: {ext}"})
+            continue
+
+        content = await file.read()
+
+        row = supabase.table("calls").insert({
+            "filename": file.filename,
+            "file_size": len(content),
+            "status": "uploading",
+        }).execute()
+        call_id = row.data[0]["id"]
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        tmp.write(content)
+        tmp.close()
+
+        thread = threading.Thread(target=_run_pipeline, args=(call_id, tmp.name), daemon=True)
+        thread.start()
+
+        results.append({"filename": file.filename, "call_id": call_id, "status": "uploading"})
+
+    return results
+
+
 @app.get("/calls")
 def list_calls():
     rows = supabase.table("calls").select("*").order("created_at", desc=True).limit(50).execute()
@@ -251,13 +308,23 @@ def list_calls():
 
 @app.get("/calls/{call_id}")
 def get_call(call_id: str):
-    call = supabase.table("calls").select("*").eq("id", call_id).single().execute()
+    call = supabase.table("calls") \
+        .select("id,filename,file_size,status,duration_ms,language,speaker_count,segment_count,pii_count,audio_url,created_at,updated_at") \
+        .eq("id", call_id).single().execute()
     if not call.data:
         raise HTTPException(404, "Apel negăsit")
 
-    segments = supabase.table("segments").select("*").eq("call_id", call_id).order("position").execute()
-    pii = supabase.table("pii_mappings").select("*").eq("call_id", call_id).execute()
-    qa = supabase.table("qa_results").select("*").eq("call_id", call_id).maybe_single().execute()
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        seg_f = ex.submit(lambda: supabase.table("segments")
+            .select("position,role,speaker,text,start_ms,end_ms,duration_ms,wpm,confidence")
+            .eq("call_id", call_id).order("position").execute())
+        pii_f = ex.submit(lambda: supabase.table("pii_mappings")
+            .select("original,placeholder")
+            .eq("call_id", call_id).execute())
+        qa_f  = ex.submit(lambda: supabase.table("qa_results")
+            .select("scor_final,rezumat,empatie,sentiment_client,scor_structura,scor_calitate,scor_profesionalism,scor_ritm,scor_penalizari,penalizari_detalii,checklist")
+            .eq("call_id", call_id).maybe_single().execute())
+        segments, pii, qa = seg_f.result(), pii_f.result(), qa_f.result()
 
     return {
         "call": call.data,
