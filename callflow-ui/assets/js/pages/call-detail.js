@@ -25,11 +25,11 @@ async function pageCallDetail({ id }) {
 
     <div class="meta-strip" id="detailMeta" style="margin-bottom:24px"></div>
 
-    <div id="audioPlayerWrap" style="display:none;position:sticky;top:0;z-index:50;margin-bottom:20px">
-      <div class="panel" style="padding:12px 20px;border-bottom:1px solid var(--border);backdrop-filter:blur(20px);background:var(--glass-strong)">
+    <div id="audioPlayerWrap" style="display:none;margin-bottom:20px">
+      <div class="panel" style="padding:16px 20px">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-faint);letter-spacing:.08em;white-space:nowrap">▶ APEL</div>
-          <audio id="callAudio" controls style="flex:1;height:32px;accent-color:var(--cyan)" preload="none"></audio>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--ink-faint);letter-spacing:.08em">REDARE APEL</div>
+          <audio id="callAudio" controls style="flex:1;height:36px;accent-color:var(--cyan)" preload="none"></audio>
         </div>
       </div>
     </div>
@@ -71,11 +71,33 @@ async function pageCallDetail({ id }) {
 }
 
 function renderDetail({ call, segments, pii_mappings, qa }) {
-  // Audio player + sync
+  // Audio player
   if (call.audio_url) {
-    document.getElementById('audioPlayerWrap').style.display = 'block';
+    const wrap = document.getElementById('audioPlayerWrap');
     const audio = document.getElementById('callAudio');
     audio.src = call.audio_url;
+    wrap.style.display = 'block';
+
+    console.log('[AUDIO] src set to:', call.audio_url);
+
+    audio.addEventListener('loadstart',      () => console.log('[AUDIO] loadstart'));
+    audio.addEventListener('loadedmetadata', () => console.log('[AUDIO] loadedmetadata · duration=', audio.duration));
+    audio.addEventListener('loadeddata',     () => console.log('[AUDIO] loadeddata'));
+    audio.addEventListener('canplay',        () => console.log('[AUDIO] canplay'));
+    audio.addEventListener('canplaythrough', () => console.log('[AUDIO] canplaythrough'));
+    audio.addEventListener('play',           () => console.log('[AUDIO] play event'));
+    audio.addEventListener('playing',        () => console.log('[AUDIO] playing'));
+    audio.addEventListener('pause',          () => console.log('[AUDIO] pause'));
+    audio.addEventListener('waiting',        () => console.log('[AUDIO] waiting (buffering)'));
+    audio.addEventListener('stalled',        () => console.warn('[AUDIO] stalled'));
+    audio.addEventListener('suspend',        () => console.log('[AUDIO] suspend'));
+    audio.addEventListener('abort',          () => console.warn('[AUDIO] abort'));
+    audio.addEventListener('emptied',        () => console.warn('[AUDIO] emptied'));
+    audio.addEventListener('error', () => {
+      const err = audio.error;
+      console.error('[AUDIO] error', { code: err?.code, message: err?.message, networkState: audio.networkState, readyState: audio.readyState, src: audio.src });
+    });
+
     audio.addEventListener('timeupdate', () => {
       const ms = audio.currentTime * 1000;
       let active = null;
@@ -86,7 +108,7 @@ function renderDetail({ call, segments, pii_mappings, qa }) {
       });
       if (active) {
         active.classList.add('turn-active');
-        active.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        active.scrollIntoView({ behavior: 'instant', block: 'nearest' });
       }
     });
   }
@@ -141,7 +163,7 @@ function renderDetail({ call, segments, pii_mappings, qa }) {
     if (s.end_ms != null)   div.dataset.end   = s.end_ms;
 
     const timeClick = s.start_ms != null
-      ? `onclick="(function(){const a=document.getElementById('callAudio');if(a&&a.src){a.currentTime=${s.start_ms/1000};a.play();}})()" style="cursor:pointer;color:var(--cyan)" title="Sari la acest moment"`
+      ? `onclick="(function(){const a=document.getElementById('callAudio');if(a&&a.src){a.currentTime=${s.start_ms/1000};a.play().catch(function(){});}})()" style="cursor:pointer;color:var(--cyan)" title="Sari la acest moment"`
       : '';
 
     div.innerHTML = `
