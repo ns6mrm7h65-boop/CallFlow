@@ -233,6 +233,20 @@ def normalize(anonymized_text: str) -> dict:
         print(f"  chunk {i // _CHUNK_SIZE + 1}/{total_chunks} ({len(chunk)} segments)")
         hint = f"CONTEXT: The AGENT is speaker 'Vorbitor {agent_speaker}' (locked from earlier segments). Every other speaker ID is CLIENT, no matter what they say." if agent_speaker else ""
         chunk_labels = _call_haiku(ctrl, "\n\n".join(chunk), context_hint=hint)
+
+        # Deterministic post-hoc enforcement: once AGENT speaker ID is locked,
+        # override Haiku's label for any segment matching/not-matching that speaker ID.
+        # This eliminates chunk-boundary role drift regardless of prompt compliance.
+        if agent_speaker is not None:
+            for raw, lbl in zip(chunk, chunk_labels):
+                sp = _extract_speaker_id(raw)
+                if sp is None:
+                    continue
+                expected = "AGENT" if sp == agent_speaker else "CLIENT"
+                if lbl.get("role") != expected:
+                    lbl["role"] = expected
+                    lbl["confidence"] = min(lbl.get("confidence", 0.8), 0.75)
+
         labels.extend(chunk_labels)
         if agent_speaker is None:
             agent_speaker = _agent_speaker_from_chunk(chunk, chunk_labels)
