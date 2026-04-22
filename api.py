@@ -9,7 +9,7 @@ _PIPELINE_SEMAPHORE = threading.Semaphore(4)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZIPMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 from supabase import create_client
@@ -28,7 +28,7 @@ load_dotenv()
 
 app = FastAPI(title="CallFlow API")
 
-app.add_middleware(GZIPMiddleware, minimum_size=1000)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
