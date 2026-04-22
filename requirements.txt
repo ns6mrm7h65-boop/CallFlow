@@ -6,3 +6,4 @@ uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 gunicorn==23.0.0
 supabase==2.8.0
+imageio-ffmpeg==0.5.1

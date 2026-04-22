@@ -104,15 +104,15 @@ def _run_pipeline(call_id: str, tmp_path: str):
         mp3_path = tmp_path + ".mp3"
         try:
             import subprocess
+            import imageio_ffmpeg
+            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
             subprocess.run(
-                ["ffmpeg", "-y", "-i", tmp_path, "-vn", "-ar", "22050", "-ac", "1", "-b:a", "64k", mp3_path],
+                [ffmpeg_bin, "-y", "-i", tmp_path, "-vn", "-ar", "22050", "-ac", "1", "-b:a", "64k", mp3_path],
                 check=True, capture_output=True, timeout=120,
             )
-        except FileNotFoundError:
-            logger.warning("ffmpeg not installed — falling back to original file for playback")
-            mp3_path = tmp_path
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"ffmpeg transcode failed: {e.stderr.decode()[:200]} — using original")
+        except Exception as e:
+            stderr = e.stderr.decode()[:200] if hasattr(e, 'stderr') and e.stderr else str(e)
+            logger.warning(f"ffmpeg transcode failed: {stderr} — using original")
             mp3_path = tmp_path
 
         use_mp3 = mp3_path.endswith(".mp3")
