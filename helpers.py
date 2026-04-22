@@ -231,21 +231,29 @@ def normalize(anonymized_text: str) -> dict:
     for i in range(0, len(segments), _CHUNK_SIZE):
         chunk = segments[i: i + _CHUNK_SIZE]
         print(f"  chunk {i // _CHUNK_SIZE + 1}/{total_chunks} ({len(chunk)} segments)")
-        hint = f"CONTEXT: The AGENT is speaker 'Vorbitor {agent_speaker}' (locked from earlier segments). Every other speaker ID is CLIENT, no matter what they say." if agent_speaker else ""
+        hint = f"CONTEXT: AGENT-ul este vorbitorul 'Vorbitor {agent_speaker}' (blocat din segmentele anterioare). Orice alt ID de vorbitor este CLIENT, cu o excepție: dacă un segment LUNG are conținut clar care contrazice ID-ul (ex: vorbitor blocat ca AGENT povestește viața personală, sau vorbitor blocat ca CLIENT recită termeni contractuali), etichetează după conținut cu confidence >=0.90." if agent_speaker else ""
         chunk_labels = _call_haiku(ctrl, "\n\n".join(chunk), context_hint=hint)
 
-        # Deterministic post-hoc enforcement: once AGENT speaker ID is locked,
-        # override Haiku's label for any segment matching/not-matching that speaker ID.
-        # This eliminates chunk-boundary role drift regardless of prompt compliance.
+        # Enforcement determinist: după ce agent_speaker e blocat, suprascriem
+        # eticheta Haiku pe baza ID-ului vorbitorului — DOAR dacă Haiku nu a
+        # marcat clar o corecție pe bază de conținut (confidence >= 0.90).
+        # Astfel eliminăm driftul la graniță de chunk, dar păstrăm capacitatea
+        # Haiku de a corecta erorile de diarizare STT pe segmente lungi.
         if agent_speaker is not None:
-            for raw, lbl in zip(chunk, chunk_labels):
+            for raw, meta_i, lbl in zip(chunk, parsed[i:i + _CHUNK_SIZE], chunk_labels):
                 sp = _extract_speaker_id(raw)
                 if sp is None:
                     continue
                 expected = "AGENT" if sp == agent_speaker else "CLIENT"
-                if lbl.get("role") != expected:
-                    lbl["role"] = expected
-                    lbl["confidence"] = min(lbl.get("confidence", 0.8), 0.75)
+                if lbl.get("role") == expected:
+                    continue
+                haiku_conf = lbl.get("confidence", 0.0)
+                text_len = len(meta_i.get("text") or "")
+                # Trust Haiku's override only on long segments with high confidence
+                if haiku_conf >= 0.90 and text_len >= 80:
+                    continue
+                lbl["role"] = expected
+                lbl["confidence"] = min(haiku_conf or 0.8, 0.75)
 
         labels.extend(chunk_labels)
         if agent_speaker is None:
