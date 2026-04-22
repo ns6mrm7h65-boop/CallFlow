@@ -184,14 +184,15 @@ def _parse_haiku_json(response) -> str:
     return raw
 
 
-def _call_haiku(ctrl: "ClaudeController", text: str) -> list:
+def _call_haiku(ctrl: "ClaudeController", text: str, context_hint: str = "") -> list:
+    user_content = f"{context_hint}\n\n{text}" if context_hint else text
     for attempt in range(_MAX_RETRIES):
         try:
             response = ctrl.client.messages.create(
                 model=ctrl.model,
                 max_tokens=512,
                 system=[{"type": "text", "text": _get_classify_prompt(), "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": text}],
+                messages=[{"role": "user", "content": user_content}],
             )
             return json.loads(_parse_haiku_json(response))
         except Exception as e:
@@ -203,6 +204,21 @@ def _call_haiku(ctrl: "ClaudeController", text: str) -> list:
             time.sleep(2 ** attempt)
 
 
+def _extract_speaker_id(raw_segment: str) -> str | None:
+    m = re.search(r"Vorbitor\s+(\S+)", raw_segment)
+    return m.group(1) if m else None
+
+
+def _agent_speaker_from_chunk(chunk_raw: list, chunk_labels: list) -> str | None:
+    from collections import Counter
+    votes = Counter()
+    for raw, lbl in zip(chunk_raw, chunk_labels):
+        sp = _extract_speaker_id(raw)
+        if sp and lbl.get("role") == "AGENT":
+            votes[sp] += 1
+    return votes.most_common(1)[0][0] if votes else None
+
+
 def normalize(anonymized_text: str) -> dict:
     """Classify roles + confidence for each segment via Haiku. Input must be anonymized."""
     ctrl = ClaudeController()
@@ -210,11 +226,16 @@ def normalize(anonymized_text: str) -> dict:
     parsed = [_parse_segment(s) for s in segments]
 
     labels = []
+    agent_speaker = None
     total_chunks = -(-len(segments) // _CHUNK_SIZE)
     for i in range(0, len(segments), _CHUNK_SIZE):
         chunk = segments[i: i + _CHUNK_SIZE]
         print(f"  chunk {i // _CHUNK_SIZE + 1}/{total_chunks} ({len(chunk)} segments)")
-        labels.extend(_call_haiku(ctrl, "\n\n".join(chunk)))
+        hint = f"CONTEXT: The AGENT is speaker 'Vorbitor {agent_speaker}' (locked from earlier segments). Every other speaker ID is CLIENT, no matter what they say." if agent_speaker else ""
+        chunk_labels = _call_haiku(ctrl, "\n\n".join(chunk), context_hint=hint)
+        labels.extend(chunk_labels)
+        if agent_speaker is None:
+            agent_speaker = _agent_speaker_from_chunk(chunk, chunk_labels)
 
     return {
         "conversation": [
